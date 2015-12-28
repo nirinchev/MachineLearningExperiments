@@ -8,20 +8,20 @@ using MathNet.Numerics.LinearAlgebra.Double;
 
 namespace MachineLearning
 {
-	class Program
+	public class Program
 	{
 		private const int Features = 4;
-		private const double Alpha = 0.01;
+		private const double Alpha = 0.1;
 		private const double Lambda = 100;
+		private const int TestSize = 100;
 
 		private static readonly Random rand = new Random();
-		private static readonly int[] TrainingDataSizes = new[]
+		private static readonly int[] TrainingDataSizes =
 		{
 			10,
 			100,
 			1000,
-			5000,
-			9000
+			5000
 		};
 
 		static void Main(string[] args)
@@ -32,20 +32,22 @@ namespace MachineLearning
 			foreach (var dataSize in TrainingDataSizes)
 			{
 				sw.Start();
-				var featureData = input.Item1.SubMatrix(0, dataSize, 0, Features + 1);
+				var featureData = input.Item1.SubMatrix(0, dataSize, 0, input.Item1.ColumnCount);
 				var results = input.Item2.SubVector(0, dataSize);
 
 				var theta = CalculateTheta(featureData, results);
 
 				var test = 0.0;
-				for (var i = 0; i < 100; i++)
+				for (var i = 0; i < TestSize; i++)
 				{
-					test += Test(theta, input.Item1, input.Item2);
+					var index = rand.Next(TestSize, input.Item1.RowCount);
+					var testData = input.Item1.Row(index);
+					test += Math.Pow(Hypothesis(theta, testData) - input.Item2[index], 2);
 				}
 
 				sw.Stop();
 
-				Console.WriteLine($"Size: {dataSize}, PredictionCost: {test / 100}, Elapsed: {sw.ElapsedMilliseconds / 1000.0} s");
+				Console.WriteLine($"Size: {dataSize}, PredictionCost: {Math.Sqrt(test / TestSize)}, Elapsed: {sw.ElapsedMilliseconds / 1000.0} s");
 				sw.Reset();
 			}
 
@@ -56,7 +58,7 @@ namespace MachineLearning
 		{
 			var theta = Vector<double>.Build.Dense(featureData.ColumnCount, 0);
 			var cost = Cost(theta, featureData, results);
-			var costDifference = double.MaxValue;
+			double costDifference;
 			do
 			{
 				theta = UpdateTheta(theta, featureData, results);
@@ -75,8 +77,8 @@ namespace MachineLearning
 																  .Select(double.Parse)
 																  .ToArray())
 													.ToArray();
-			var featureMatrix = DenseMatrix.Build.Dense(file.Length, Features + 1);
-			var outputVector = DenseVector.Build.Dense(file.Length);
+			var featureMatrix = Matrix<double>.Build.Dense(file.Length, Features + 1);
+			var outputVector = Vector<double>.Build.Dense(file.Length);
 			for (var i = 0; i < file.Length; i++)
 			{
 				var data = file[i];
@@ -101,20 +103,21 @@ namespace MachineLearning
 				}
 			}
 
-			return Tuple.Create(featureMatrix, outputVector);
+			var featureCount = featureMatrix.ColumnCount;
+			var secondOrderMatrix = Matrix<double>.Build.Dense(featureMatrix.RowCount, 2 * featureCount);
+			secondOrderMatrix.SetSubMatrix(0, 0, featureMatrix);
+			for (var i = 0; i < featureMatrix.RowCount; i++)
+			{
+				for (var j = 0; j < featureCount; j++)
+				{
+					secondOrderMatrix[i, featureCount + j] = Math.Pow(featureMatrix[i, j], 2);
+				}
+			}
+
+			return Tuple.Create(secondOrderMatrix, outputVector);
 		}
 
-		private static double Test(Vector<double> theta, Matrix<double> featureData, Vector<double> results)
-		{
-			var index = rand.Next(0, featureData.RowCount);
-			var data = featureData.Row(index);
-			return Math.Pow(Hypothesis(theta, data) - results[index], 2);
-		}
-
-		private static double Hypothesis(Vector<double> theta, Vector<double> features)
-		{
-			return theta.DotProduct(features);
-		}
+		private static double Hypothesis(Vector<double> theta, Vector<double> features) => theta.DotProduct(features);
 
 		private static Vector<double> UpdateTheta(Vector<double> theta, Matrix<double> trainingData, Vector<double> results)
 		{
