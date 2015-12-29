@@ -35,23 +35,61 @@ namespace ML.Classification
 				var results = input.Item2.SubVector(0, dataSize);
 
 				var theta = CalculateTheta(featureData, results);
-
-				var successes = 0;
-				var total = 0;
-				for (var i = dataSize; i < input.Item1.RowCount; i++)
-				{
-					var testData = input.Item1.Row(i);
-					var guessedType = Hypothesis(theta, testData) >= 0.5 ? 1 : 0;
-					if (guessedType == (int)input.Item2[i])
-					{
-						successes++;
-					}
-					total++;
-				}
-
 				sw.Stop();
+				Console.WriteLine($"Size: {dataSize}, Elapsed: {sw.ElapsedMilliseconds / 1000.0} s");
 
-				Console.WriteLine($"Size: {dataSize}, Success rate: {1.0 * successes / total} Elapsed: {sw.ElapsedMilliseconds / 1000.0} s");
+				var optimalFScore = 0.0;
+				var optimalPrecision = 0.0;
+				var optimalRecall = 0.0;
+				var optimalThreshold = 0.0;
+				for (var threshold = 0.05; threshold < 1; threshold += 0.05)
+				{
+					var successes = 0;
+					var total = 0;
+					var truePositives = 0;
+					var falsePositives = 0;
+					var falseNegatives = 0;
+
+					for (var i = dataSize; i < input.Item1.RowCount; i++)
+					{
+						var testData = input.Item1.Row(i);
+						var guessedType = Hypothesis(theta, testData) >= threshold ? 1 : 0;
+						var actualType = (int)input.Item2[i];
+						if (guessedType == actualType)
+						{
+							successes++;
+						}
+
+						if (actualType == 1 && guessedType == 1)
+						{
+							truePositives++;
+						}
+						else if (actualType == 0 && guessedType == 1)
+						{
+							falsePositives++;
+						}
+						else if (actualType == 1 && guessedType == 0)
+						{
+							falseNegatives++;
+						}
+
+						total++;
+					}
+
+					var precision = 1.0 * truePositives / (truePositives + falsePositives);
+					var recall = 1.0 * truePositives / (truePositives + falseNegatives);
+					var fscore = 2 * precision * recall / (precision + recall);
+
+					if (fscore > optimalFScore)
+					{
+						optimalFScore = fscore;
+						optimalThreshold = threshold;
+						optimalPrecision = precision;
+						optimalRecall = recall;
+					}
+				}
+				Console.WriteLine($"Threshold: {optimalThreshold:0.00}, FScore: {optimalFScore:0.00}, Precision: {optimalPrecision:0.00}, Recall: {optimalRecall:0.00}");
+				Console.WriteLine("-----------------------");
 				sw.Reset();
 			}
 
@@ -91,12 +129,15 @@ namespace ML.Classification
 
 				featureMatrix.SetRow(i, features);
 
-				outputVector[i] = data[featureMatrix.ColumnCount - 1] - 1;
+				outputVector[i] = data[featureMatrix.ColumnCount - 1] % 2;
 				if (outputVector[i] != 0 && outputVector[i] != 1)
 				{
 					throw new ArgumentOutOfRangeException();
 				}
 			}
+
+			var positive = outputVector.Count(v => v == 1);
+			var negative = outputVector.Count(v => v == 0);
 
 			var featureCount = featureMatrix.ColumnCount;
 			var higherOrderMatrix = Matrix<double>.Build.Dense(featureMatrix.RowCount, 1 + 3 * featureCount * (featureCount - 1) / 2);
